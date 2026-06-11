@@ -15,7 +15,6 @@ import {
   MdAdd,
   MdRemove,
   MdReceipt,
-  MdPerson,
   MdSearch,
   MdLock,
   MdRefresh,
@@ -56,15 +55,6 @@ function createEmptyRow() {
   };
 }
 
-const generateReceiptNumber = () => {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  const rand = Math.floor(Math.random() * 1000)
-    .toString()
-    .padStart(3, "0");
-  return `RCP-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${rand}`;
-};
-
 export default function Sales() {
   const { canCreate, canRead, canUpdate, canDelete, isAdmin } =
     usePermissions();
@@ -85,10 +75,11 @@ export default function Sales() {
   const [customerId, setCustomerId] = useState(null);
   const [invoiceItems, setInvoiceItems] = useState([createEmptyRow()]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [debouncedCustomerName, setDebouncedCustomerName] = useState("");
   const [discount, setDiscount] = useState("");
   const [givenAmount, setGivenAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [receiptNo, setReceiptNo] = useState(generateReceiptNumber);
+  const [receiptNo, setReceiptNo] = useState("");
 
   // Permission checks
   const canCreateSale = isAdmin || canCreate(MODULE_NAME);
@@ -103,6 +94,25 @@ export default function Sales() {
     }
   }, [canReadSale]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedCustomerName(customerName);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [customerName]);
+
+  async function fetchNextReceiptNo() {
+    try {
+      const res = await axiosInstance.get("/sale-invoices/next-receipt");
+      if (res?.data?.nextReceiptNo !== undefined) {
+        setReceiptNo(res.data.nextReceiptNo);
+      }
+    } catch (err) {
+      console.error("Failed to fetch next receipt number", err);
+      setReceiptNo("");
+    }
+  }
+
   async function fetchInitialData() {
     try {
       const [cusRes, catRes, itmRes] = await Promise.all([
@@ -110,6 +120,7 @@ export default function Sales() {
         axiosInstance.get("/categories").catch(() => ({ data: null })),
         axiosInstance.get("/item-details").catch(() => ({ data: null })),
       ]);
+
       if (cusRes?.data)
         setCustomers(
           Array.isArray(cusRes.data) ? cusRes.data : cusRes.data.data || [],
@@ -122,6 +133,8 @@ export default function Sales() {
         setItems(
           Array.isArray(itmRes.data) ? itmRes.data : itmRes.data.data || [],
         );
+
+      await fetchNextReceiptNo();
     } catch (e) {
       toast.error("Failed to load initial data");
     }
@@ -143,23 +156,30 @@ export default function Sales() {
   }
 
   const matchingCustomers = useMemo(() => {
-    if (mobileNumber.length < 4) return [];
+    const q = debouncedCustomerName.trim().toLowerCase();
+    if (q.length < 3) return [];
     return customers.filter(
       (c) =>
-        c.mobile_number?.toLowerCase().includes(mobileNumber.toLowerCase()) ||
-        c.customer_name?.toLowerCase().includes(mobileNumber.toLowerCase()),
+        c.mobile_number?.toLowerCase().includes(q) ||
+        c.customer_name?.toLowerCase().includes(q),
     );
-  }, [mobileNumber, customers]);
+  }, [debouncedCustomerName, customers]);
+
+  const handleCustomerNameChange = (e) => {
+    const val = e.target.value;
+    setCustomerName(val);
+    setShowCustomerDropdown(val.trim().length >= 3);
+    if (val.trim().length < 3) {
+      setCustomerId(null);
+    }
+  };
 
   const handleMobileChange = (e) => {
     const val = e.target.value;
     setMobileNumber(val);
-    setShowCustomerDropdown(val.length >= 4);
     if (val.length < 4) {
-      setCustomerName("");
       setCustomerId(null);
     }
-    if (customerId) setCustomerId(null);
   };
 
   const handleSelectCustomer = (c) => {
@@ -217,7 +237,8 @@ export default function Sales() {
     setDiscount("");
     setGivenAmount("");
     setDescription("");
-    setReceiptNo(generateReceiptNumber());
+    setReceiptNo("");
+    fetchNextReceiptNo();
   };
 
   const handleEdit = (rec) => {
@@ -233,6 +254,7 @@ export default function Sales() {
     setDescription(rec.description || "");
     setDiscount(rec.discount || "");
     setGivenAmount(rec.paid || "");
+    setReceiptNo(rec.receipt_no || "");
 
     if (rec.items && rec.items.length > 0) {
       setInvoiceItems(
@@ -323,7 +345,6 @@ export default function Sales() {
           customerId: customerId || null,
           customerName,
           mobileNumber,
-          receiptNo,
           description: description || null,
           discount: Number(discount) || 0,
           givenAmount: Number(givenAmount) || 0,
@@ -355,9 +376,7 @@ export default function Sales() {
             <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <MdLock className="text-5xl text-red-400" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">
-              Access Denied
-            </h2>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Access Denied</h2>
             <p className="text-slate-500 mb-4">
               You don't have permission to view Sales Invoices.
             </p>
@@ -381,7 +400,6 @@ export default function Sales() {
         transition={{ duration: 0.35, ease: [0.23, 1, 0.32, 1] }}
         className="mx-auto w-full max-w-7xl space-y-5"
       >
-        {/* Header Section */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
@@ -410,7 +428,7 @@ export default function Sales() {
                   }
                 }
               }}
-              className={`mobile-action inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition duration-300 shadow-sm sm:w-auto ${
+              className={`mobile-action inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition duration-300 shadow-sm ${
                 isFormOpen
                   ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   : "bg-teal-600 text-white hover:bg-teal-700 hover:shadow-teal-100"
@@ -429,7 +447,6 @@ export default function Sales() {
           )}
         </div>
 
-        {/* Collapsible Form - Only show if user can create */}
         <AnimatePresence mode="wait">
           {isFormOpen && canCreateSale && (
             <motion.div
@@ -450,32 +467,36 @@ export default function Sales() {
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <SectionCard title="Customer Identification">
                       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
-                        <Field
-                          label="Mobile / Search"
-                          required
-                          className="min-w-0 flex-1 sm:min-w-[200px]"
-                        >
-                          <div className="relative">
-                            <input
-                              type="tel"
-                              value={mobileNumber}
-                              onChange={handleMobileChange}
-                              onFocus={() =>
-                                mobileNumber.length >= 4 &&
-                                setShowCustomerDropdown(true)
-                              }
-                              onBlur={() =>
-                                setTimeout(
-                                  () => setShowCustomerDropdown(false),
-                                  200,
-                                )
-                              }
-                              placeholder="Enter mobile..."
-                              className="h-8 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2.5 pr-8 text-[12px] outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100 relative z-10"
-                            />
-                            <MdSearch className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4 z-10" />
-                            {showCustomerDropdown &&
-                              matchingCustomers.length > 0 && (
+                        <div className="min-w-0 flex-1 sm:min-w-[200px]">
+                          <Field
+                            label="Customer Name / Search"
+                            required
+                            className="min-w-0"
+                          >
+                            <div className="relative">
+                              <input
+                                type="text"
+                                value={customerName}
+                                onChange={handleCustomerNameChange}
+                                onFocus={() =>
+                                  customerName.trim().length >= 3 &&
+                                  setShowCustomerDropdown(true)
+                                }
+                                onBlur={() =>
+                                  setTimeout(
+                                    () => setShowCustomerDropdown(false),
+                                    200,
+                                  )
+                                }
+                                placeholder="Search by customer name or mobile"
+                                className={`h-8 w-full rounded-md border text-[12px] outline-none transition px-2.5 transition-colors ${
+                                  customerId
+                                    ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 font-bold text-emerald-800 dark:text-emerald-400"
+                                    : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                                }`}
+                              />
+                              <MdSearch className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4 z-10" />
+                              {showCustomerDropdown && matchingCustomers.length > 0 && (
                                 <ul className="absolute left-0 top-full z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-2xl border border-slate-300 bg-white py-1 shadow-xl ring-1 ring-slate-200/70 transition-colors dark:border-slate-700 dark:bg-slate-900">
                                   {matchingCustomers.map((c) => (
                                     <li
@@ -493,19 +514,20 @@ export default function Sales() {
                                   ))}
                                 </ul>
                               )}
-                          </div>
-                        </Field>
+                            </div>
+                          </Field>
+                        </div>
                         <Field
-                          label="Customer Name"
+                          label="Mobile Number"
                           required
                           className="min-w-0 flex-1 sm:min-w-[200px]"
                         >
                           <input
-                            type="text"
-                            value={customerName}
-                            onChange={(e) => setCustomerName(e.target.value)}
-                            placeholder="Walk-in Customer"
-                            className={`h-8 w-full rounded-md border text-[12px] outline-none transition px-2.5 transition-colors ${customerId ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 font-bold text-emerald-800 dark:text-emerald-400" : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:border-teal-400 focus:ring-2 focus:ring-teal-100"}`}
+                            type="tel"
+                            value={mobileNumber}
+                            onChange={handleMobileChange}
+                            placeholder="Enter mobile..."
+                            className="h-8 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2.5 text-[12px] outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
                           />
                         </Field>
                       </div>
@@ -515,7 +537,7 @@ export default function Sales() {
                         <Field label="Receipt Number" className="min-w-0 flex-1">
                           <input
                             type="text"
-                            value={receiptNo}
+                            value={receiptNo || "Loading..."}
                             readOnly
                             className="h-8 w-full rounded-md border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-2.5 text-[12px] font-mono font-bold text-slate-500 dark:text-slate-400"
                           />
@@ -636,8 +658,7 @@ export default function Sales() {
                           onClick={addRow}
                           className="group inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2 text-[12px] font-bold text-teal-700 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-900/20 dark:text-teal-400"
                         >
-                          <MdAdd className="h-4 w-4 group-hover:rotate-90 transition duration-300" />{" "}
-                          Add Line
+                          <MdAdd className="h-4 w-4 group-hover:rotate-90 transition duration-300" /> Add Line
                         </button>
                       </div>
                     </div>
@@ -692,27 +713,40 @@ export default function Sales() {
                         <div className="min-w-0 flex-1 sm:min-w-[200px]">
                           {payable > 0 && givenAmount > 0 && (
                             <div
-                              className={`p-3 rounded-xl border-2 flex items-center justify-between transition-colors ${Number(givenAmount) >= payable ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-900/30" : "bg-rose-50 dark:bg-rose-900/20 border-rose-100 dark:border-rose-900/30"}`}
+                              className={`p-3 rounded-xl border-2 flex items-center justify-between transition-colors ${
+                                Number(givenAmount) >= payable
+                                  ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-900/30"
+                                  : "bg-rose-50 dark:bg-rose-900/20 border-rose-100 dark:border-rose-900/30"
+                              }`}
                             >
                               <div className="flex flex-col">
                                 <span
-                                  className={`text-[10px] font-black uppercase tracking-widest ${Number(givenAmount) >= payable ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}
+                                  className={`text-[10px] font-black uppercase tracking-widest ${
+                                    Number(givenAmount) >= payable
+                                      ? "text-emerald-700 dark:text-emerald-400"
+                                      : "text-rose-700 dark:text-rose-400"
+                                  }`}
                                 >
                                   {Number(givenAmount) >= payable
                                     ? "COMPLETE"
                                     : "PARTIAL DUE"}
                                 </span>
                                 <span
-                                  className={`font-mono font-black text-lg ${Number(givenAmount) >= payable ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
+                                  className={`font-mono font-black text-lg ${
+                                    Number(givenAmount) >= payable
+                                      ? "text-emerald-600 dark:text-emerald-400"
+                                      : "text-rose-600 dark:text-rose-400"
+                                  }`}
                                 >
-                                  PKR{" "}
-                                  {Math.abs(
-                                    Number(givenAmount) - payable,
-                                  ).toLocaleString()}
+                                  PKR {Math.abs(Number(givenAmount) - payable).toLocaleString()}
                                 </span>
                               </div>
                               <div
-                                className={`h-8 w-8 rounded-full flex items-center justify-center transition-colors ${Number(givenAmount) >= payable ? "bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200" : "bg-rose-200 dark:bg-rose-800 text-rose-800 dark:text-rose-200"}`}
+                                className={`h-8 w-8 rounded-full flex items-center justify-center transition-colors ${
+                                  Number(givenAmount) >= payable
+                                    ? "bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200"
+                                    : "bg-rose-200 dark:bg-rose-800 text-rose-800 dark:text-rose-200"
+                                }`}
                               >
                                 {Number(givenAmount) >= payable ? "✓" : "!"}
                               </div>
@@ -739,12 +773,12 @@ export default function Sales() {
                       disabled={submitting || payable <= 0}
                       className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-teal-600 px-6 py-2.5 text-sm font-black text-white shadow-lg shadow-teal-100 transition hover:bg-teal-700 disabled:opacity-50 sm:min-w-[180px] sm:w-auto sm:px-8"
                     >
-                      <MdReceipt className="h-5 w-5" />{" "}
+                      <MdReceipt className="h-5 w-5" />
                       {submitting
                         ? "Authenticating..."
                         : editId
-                          ? "Save & Sync"
-                          : "Generate Invoice"}
+                        ? "Save & Sync"
+                        : "Generate Invoice"}
                     </button>
                   </div>
                 </form>
@@ -753,7 +787,6 @@ export default function Sales() {
           )}
         </AnimatePresence>
 
-        {/* List Section */}
         <Card className="overflow-hidden p-0">
           <SectionHeader
             title="Sales History Log"
@@ -795,8 +828,8 @@ export default function Sales() {
                       s.paid >= s.payable
                         ? { label: "PAID", tone: "emerald" }
                         : s.paid > 0
-                          ? { label: "PARTIAL", tone: "amber" }
-                          : { label: "DUE", tone: "rose" };
+                        ? { label: "PARTIAL", tone: "amber" }
+                        : { label: "DUE", tone: "rose" };
 
                     return (
                       <motion.tr
