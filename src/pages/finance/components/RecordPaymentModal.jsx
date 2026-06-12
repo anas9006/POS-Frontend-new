@@ -37,6 +37,7 @@ export default function RecordPaymentModal({
   invoices = [],
   bookings = [],
   purchases = [],
+  previousBalance = 0,
 }) {
   const [form, setForm] = useState(type === "customer" ? createCustomerForm() : createSupplierForm());
   const [submitting, setSubmitting] = useState(false);
@@ -70,6 +71,9 @@ export default function RecordPaymentModal({
         const bk = unpaidBookings.find((b) => String(b.id) === String(form.bookingId));
         return bk ? parseFloat(bk.to_be_paid || 0) : null;
       }
+      if (form.linkType === "general") {
+        return parseFloat(previousBalance || 0) > 0 ? parseFloat(previousBalance || 0) : null;
+      }
       return null;
     }
     if (form.purchaseId) {
@@ -77,7 +81,7 @@ export default function RecordPaymentModal({
       return p ? parseFloat(p.to_be_paid || 0) : null;
     }
     return null;
-  }, [type, form, unpaidInvoices, unpaidBookings, unpaidPurchases]);
+  }, [type, form, unpaidInvoices, unpaidBookings, unpaidPurchases, previousBalance]);
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -182,7 +186,7 @@ export default function RecordPaymentModal({
                 >
                   <option value="invoice">Sales Invoice</option>
                   <option value="booking">Booking</option>
-                  <option value="general">General (not linked)</option>
+                  <option value="general">Previous Balance / General</option>
                 </select>
               </Field>
 
@@ -244,6 +248,11 @@ export default function RecordPaymentModal({
           {selectedDue !== null && (
             <p className="text-[11px] font-semibold text-amber-600">
               Due on selected: PKR {selectedDue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </p>
+          )}
+          {form.linkType === "general" && previousBalance <= 0 && (
+            <p className="text-[11px] text-slate-500">
+              This payment will be recorded as a general customer payment against the outstanding balance.
             </p>
           )}
 

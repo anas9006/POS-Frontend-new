@@ -262,9 +262,9 @@ export default function Sales() {
           id: Date.now() + Math.random(),
           categoryId: item.category_id || "",
           itemId: item.item_id || "",
-          price: item.sale_price || 0,
-          quantity: item.qty || 1,
-          total: item.total || 0,
+          price: item.price ?? item.unit_price ?? item.sale_price ?? 0,
+          quantity: item.qty || item.quantity || 1,
+          total: item.total || item.total_price || 0,
         })),
       );
     } else {

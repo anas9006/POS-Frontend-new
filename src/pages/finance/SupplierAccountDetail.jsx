@@ -40,7 +40,6 @@ const TABS = [
   { id: "ledger", label: "Ledger", icon: <MdReceipt className="text-base" /> },
   { id: "payments", label: "Payments", icon: <MdPayment className="text-base" /> },
   { id: "purchases", label: "Purchases", icon: <MdShoppingCart className="text-base" /> },
-  { id: "statements", label: "Statements", icon: <MdDescription className="text-base" /> },
 ];
 
 export default function SupplierAccountDetail() {
@@ -366,13 +365,6 @@ export default function SupplierAccountDetail() {
           />
         )}
 
-        {activeTab === "statements" && (
-          <LedgerTable
-            ledger={ledger}
-            closingBalance={closingBalance}
-            entityName={`${supplier?.supplier_name} — Statement`}
-          />
-        )}
 
         {activeTab === "payments" && (
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">

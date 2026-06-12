@@ -39,7 +39,6 @@ const TABS = [
   { id: "ledger", label: "Ledger", icon: <MdReceipt className="text-base" /> },
   { id: "payments", label: "Payments", icon: <MdPayment className="text-base" /> },
   { id: "sales-bookings", label: "Sales & Bookings", icon: <MdShoppingCart className="text-base" /> },
-  { id: "statements", label: "Statements", icon: <MdDescription className="text-base" /> },
 ];
 
 export default function CustomerAccountDetail() {
@@ -131,12 +130,20 @@ export default function CustomerAccountDetail() {
     const salesTotal = invoices.reduce((s, inv) => s + parseFloat(inv.payable || 0), 0);
     const salesDue = invoices.reduce((s, inv) => s + parseFloat(inv.to_be_paid || 0), 0);
     const bookingDue = bookings.reduce((s, bk) => s + parseFloat(bk.to_be_paid || 0), 0);
+    const generalPaymentTotal = salesPayments
+      .filter((p) => !p.invoice_id)
+      .reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    const previousBalanceValue = Math.max(
+      0,
+      parseFloat(customer?.previous_balance || 0) - generalPaymentTotal,
+    );
     const totalReceived = allPayments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
     const overdueInvoices = countOverdue(invoices);
     const overdueAmount = overdueInvoices.reduce((s, inv) => s + parseFloat(inv.to_be_paid || 0), 0);
     return {
       salesTotal,
-      totalReceivable: salesDue + bookingDue,
+      previousBalance: previousBalanceValue,
+      totalReceivable: salesDue + bookingDue + previousBalanceValue,
       totalReceived,
       overdueAmount,
       overdueCount: overdueInvoices.length,
@@ -145,7 +152,7 @@ export default function CustomerAccountDetail() {
       salesDue,
       bookingDue,
     };
-  }, [invoices, bookings, allPayments]);
+  }, [invoices, bookings, allPayments, salesPayments, customer]);
 
   const timelineEvents = useMemo(
     () =>
@@ -202,6 +209,7 @@ export default function CustomerAccountDetail() {
     { label: "Credit Limit", value: "PKR 50,000", icon: <MdAccountBalanceWallet className="h-4 w-4" /> },
     { label: "Sales Due", value: fmtMoney(summary.salesDue), icon: <MdWarning className="h-4 w-4" /> },
     { label: "Bookings Due", value: fmtMoney(summary.bookingDue), icon: <MdWarning className="h-4 w-4" /> },
+    { label: "Previous Balance", value: fmtMoney(summary.previousBalance), icon: <MdWarning className="h-4 w-4" /> },
   ];
 
   if (loading && !customer) {
@@ -401,13 +409,6 @@ export default function CustomerAccountDetail() {
           />
         )}
 
-        {activeTab === "statements" && (
-          <LedgerTable
-            ledger={ledger}
-            closingBalance={closingBalance}
-            entityName={`${customer?.customer_name} — Statement`}
-          />
-        )}
 
         {activeTab === "payments" && (
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -576,6 +577,7 @@ export default function CustomerAccountDetail() {
         outstanding={summary.totalReceivable}
         invoices={invoices}
         bookings={bookings}
+        previousBalance={summary.previousBalance}
       />
     </PageShell>
   );

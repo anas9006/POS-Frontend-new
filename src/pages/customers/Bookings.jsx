@@ -84,9 +84,11 @@ export default function Bookings() {
   // Form state
   const [mobileNumber, setMobileNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [debouncedCustomerName, setDebouncedCustomerName] = useState("");
   const [customerId, setCustomerId] = useState(null);
   const [address, setAddress] = useState("");
   const [bookingDate, setBookingDate] = useState("");
+  const [activeCustomerField, setActiveCustomerField] = useState(null);
   const [bookingTime, setBookingTime] = useState("");
   const [invoiceItems, setInvoiceItems] = useState([createEmptyRow()]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -138,6 +140,13 @@ export default function Bookings() {
       }
     }
   }, [canReadBooking, canWriteBooking, canReadCustomer]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedCustomerName(customerName);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [customerName]);
 
   async function fetchCustomers() {
     const data = await safeFetch("/customers");
@@ -250,14 +259,41 @@ export default function Bookings() {
   };
 
   const matchingCustomers = useMemo(() => {
-    if (mobileNumber.length < 4) return [];
-    const q = mobileNumber.toLowerCase();
-    return customers.filter(
-      (c) =>
-        c.mobile_number?.toLowerCase().includes(q) ||
-        c.customer_name?.toLowerCase().includes(q),
-    );
-  }, [mobileNumber, customers]);
+    const query = debouncedCustomerName.trim().toLowerCase();
+    if (query.length >= 3) {
+      return customers.filter(
+        (c) =>
+          c.customer_name?.toLowerCase().includes(query) ||
+          c.mobile_number?.toLowerCase().includes(query),
+      );
+    }
+    if (mobileNumber.length >= 4) {
+      const q = mobileNumber.toLowerCase();
+      return customers.filter(
+        (c) =>
+          c.mobile_number?.toLowerCase().includes(q) ||
+          c.customer_name?.toLowerCase().includes(q),
+      );
+    }
+    return [];
+  }, [debouncedCustomerName, mobileNumber, customers]);
+
+  const showNameDropdown =
+    showCustomerDropdown &&
+    activeCustomerField === "name" &&
+    matchingCustomers.length > 0;
+  const showMobileDropdown =
+    showCustomerDropdown &&
+    activeCustomerField === "mobile" &&
+    matchingCustomers.length > 0;
+
+  const handleCustomerNameChange = (e) => {
+    const val = e.target.value;
+    setCustomerName(val);
+    setShowCustomerDropdown(val.trim().length >= 3);
+    setActiveCustomerField("name");
+    if (customerId) setCustomerId(null);
+  };
 
   const handleMobileChange = (e) => {
     const val = e.target.value;
@@ -265,6 +301,7 @@ export default function Bookings() {
     // Only show dropdown if we have customer data
     if (canReadCustomer && customers.length > 0) {
       setShowCustomerDropdown(val.length >= 4);
+      setActiveCustomerField("mobile");
     }
     if (customerId) setCustomerId(null);
   };
@@ -546,6 +583,47 @@ export default function Bookings() {
                   {/* Customer Info */}
                   <SectionCard title="Customer & Appointment">
                     <div className="flex flex-wrap gap-4 items-end py-1">
+                      <Field label="Customer Name" required>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={customerName}
+                            onChange={handleCustomerNameChange}
+                            onFocus={() => {
+                              if (canReadCustomer && customers.length > 0 && customerName.trim().length >= 3) {
+                                setShowCustomerDropdown(true);
+                              }
+                            }}
+                            onBlur={() =>
+                              setTimeout(() => setShowCustomerDropdown(false), 200)
+                            }
+                            placeholder="Full Name"
+                            className={`h-8 w-60 rounded-md border text-[12px] outline-none transition px-2.5 ${
+                              customerId
+                                ? "border-emerald-300 bg-emerald-50 text-emerald-800 font-bold"
+                                : "border-slate-300 bg-white focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                            }`}
+                          />
+                          {showNameDropdown && (
+                            <ul className="absolute left-0 top-full mt-1 max-h-48 w-60 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-xl z-50">
+                              {matchingCustomers.map((c) => (
+                                <li
+                                  key={c.id}
+                                  onClick={() => handleSelectCustomer(c)}
+                                  className="cursor-pointer px-3 py-1.5 hover:bg-teal-50 transition"
+                                >
+                                  <p className="text-[12px] font-semibold text-slate-800">
+                                    {c.customer_name}
+                                  </p>
+                                  <p className="text-[10px] text-slate-500">
+                                    {c.mobile_number}
+                                  </p>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </Field>
                       <Field label="Mobile Number" required>
                         <div className="relative">
                           <input
@@ -571,44 +649,30 @@ export default function Bookings() {
                             className="h-8 w-44 rounded-md border border-slate-300 bg-white px-2.5 pr-8 text-[12px] outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
                           />
                           <MdSearch className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
-                          {showCustomerDropdown &&
-                            matchingCustomers.length > 0 && (
-                              <ul className="absolute left-0 top-full mt-1 max-h-48 w-64 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-xl z-50">
-                                {matchingCustomers.map((c) => (
-                                  <li
-                                    key={c.id}
-                                    onClick={() => handleSelectCustomer(c)}
-                                    className="cursor-pointer px-3 py-1.5 hover:bg-teal-50 transition"
-                                  >
-                                    <p className="text-[12px] font-semibold text-slate-800">
-                                      {c.customer_name}
-                                    </p>
-                                    <p className="text-[10px] text-slate-500">
-                                      {c.mobile_number}
-                                    </p>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
+                          {showMobileDropdown && (
+                            <ul className="absolute left-0 top-full mt-1 max-h-48 w-64 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-xl z-50">
+                              {matchingCustomers.map((c) => (
+                                <li
+                                  key={c.id}
+                                  onClick={() => handleSelectCustomer(c)}
+                                  className="cursor-pointer px-3 py-1.5 hover:bg-teal-50 transition"
+                                >
+                                  <p className="text-[12px] font-semibold text-slate-800">
+                                    {c.customer_name}
+                                  </p>
+                                  <p className="text-[10px] text-slate-500">
+                                    {c.mobile_number}
+                                  </p>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                           {!canReadCustomer && (
                             <p className="text-[9px] text-amber-600 mt-1">
                               Customer search unavailable - no permission
                             </p>
                           )}
                         </div>
-                      </Field>
-                      <Field label="Customer Name" required>
-                        <input
-                          type="text"
-                          value={customerName}
-                          onChange={(e) => setCustomerName(e.target.value)}
-                          placeholder="Full Name"
-                          className={`h-8 w-60 rounded-md border text-[12px] outline-none transition px-2.5 ${
-                            customerId
-                              ? "border-emerald-300 bg-emerald-50 text-emerald-800 font-bold"
-                              : "border-slate-300 bg-white focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
-                          }`}
-                        />
                       </Field>
                       <Field label="Booking Date" required>
                         <input

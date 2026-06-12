@@ -2007,8 +2007,8 @@ function UsersTab({ groups, allUsers, onRefresh }) {
   }
 
   async function handleUserSubmit() {
-    if (!userForm.username.trim() || !userForm.email.trim()) {
-      toast.error("Username and email are required.");
+    if (!userForm.username.trim()) {
+      toast.error("Username is required.");
       return;
     }
     if (userModal === "add" && !userForm.password.trim()) {
@@ -2020,12 +2020,12 @@ function UsersTab({ groups, allUsers, onRefresh }) {
       const payload = {
         name: userForm.username.trim(),
         username: userForm.username.trim(),
-        email: userForm.email.trim(),
         role: userForm.role,
         group_id: userForm.group_ids[0] || "",
         group_ids: userForm.group_ids.map(Number),
         status: userForm.status,
       };
+      if (userForm.email.trim()) payload.email = userForm.email.trim();
       if (userForm.password) payload.password = userForm.password;
 
       if (userModal === "edit" && editingUser) {
@@ -2680,8 +2680,7 @@ function UsersTab({ groups, allUsers, onRefresh }) {
                   onClick={handleUserSubmit}
                   disabled={
                     userSubmitting ||
-                    !userForm.username.trim() ||
-                    !userForm.email.trim()
+                    !userForm.username.trim()
                   }
                   className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white rounded-lg text-[12px] font-bold hover:bg-teal-700 transition disabled:opacity-50 shadow-sm"
                 >
