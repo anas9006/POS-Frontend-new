@@ -9,6 +9,7 @@ import Layout from "./components/layout/Layout";
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import ItemList from "./pages/setup/ItemList";
+import ItemDetail from "./pages/setup/ItemDetail";
 import SupplierList from "./pages/setup/SupplierList";
 import CustomerList from "./pages/customers/CustomerList";
 import SubCategory from "./pages/setup/SubCategory";
@@ -165,6 +166,14 @@ const App = () => {
             element={
               <ProtectedRoute module="Items" action="read">
                 <ItemList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/items/:id"
+            element={
+              <ProtectedRoute module="Items" action="read">
+                <ItemDetail />
               </ProtectedRoute>
             }
           />

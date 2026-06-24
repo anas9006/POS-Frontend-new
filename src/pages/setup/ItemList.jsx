@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -39,6 +40,7 @@ function createEmptyForm() {
     image_name: "",
     image_file: null,
     existing_image_url: "",
+    image_preview: "",
   };
 }
 
@@ -68,6 +70,8 @@ export default function ItemPage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editId, setEditId] = useState(null);
+
+  const navigate = useNavigate();
 
   // Permission checks
   const canCreateItem = isAdmin || canCreate(MODULE_NAME);
@@ -161,8 +165,32 @@ export default function ItemPage() {
     }
   }
 
+  function validatePriceBeforeSubmit() {
+    const purchasePrice = Number.parseFloat(form.purchase_price);
+    const salePrice = Number.parseFloat(form.sale_price);
+
+    if (
+      Number.isFinite(purchasePrice) &&
+      Number.isFinite(salePrice) &&
+      salePrice < purchasePrice
+    ) {
+      return {
+        valid: false,
+        message: "Sale price must be greater than purchase price.",
+      };
+    }
+
+    return { valid: true };
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
+
+    const priceValidation = validatePriceBeforeSubmit();
+    if (!priceValidation.valid) {
+      toast.error(priceValidation.message);
+      return;
+    }
 
     if (!form.category_id || !form.item_name.trim()) {
       toast.error("Category and item name are required.");
@@ -233,6 +261,10 @@ export default function ItemPage() {
     }
   }
 
+  function handleView(id) {
+    navigate(`/items/${id}`);
+  }
+
   async function handleDelete(id) {
     if (!canDeleteItem) {
       toast.error("You don't have permission to delete items.");
@@ -294,6 +326,7 @@ export default function ItemPage() {
       image_name: item.itemImage || item.item_image_url || "",
       image_file: null,
       existing_image_url: item.item_image_url || item.itemImage || "",
+      image_preview: item.item_image_url || item.itemImage || "",
     });
     setIsFormOpen(true);
     document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
@@ -305,15 +338,50 @@ export default function ItemPage() {
 
   function handleImageChange(event) {
     const file = event.target.files?.[0];
-    setForm((current) => ({
-      ...current,
-      image_name: file ? file.name : "",
-      image_file: file || null,
-    }));
+    if (!file) return;
+
+    setForm((current) => {
+      if (current.image_preview?.startsWith("blob:")) {
+        URL.revokeObjectURL(current.image_preview);
+      }
+
+      return {
+        ...current,
+        image_name: file.name,
+        image_file: file,
+        image_preview: URL.createObjectURL(file),
+      };
+    });
+  }
+
+  function removeSelectedImage() {
+    setForm((current) => {
+      if (current.image_preview?.startsWith("blob:")) {
+        URL.revokeObjectURL(current.image_preview);
+      }
+
+      return {
+        ...current,
+        image_name: "",
+        image_file: null,
+        image_preview: "",
+      };
+    });
+
+    const fileInput = document.getElementById("item-image-input");
+    if (fileInput) {
+      fileInput.value = "";
+    }
   }
 
   function resetForm() {
-    setForm(createEmptyForm());
+    setForm((current) => {
+      if (current.image_preview?.startsWith("blob:")) {
+        URL.revokeObjectURL(current.image_preview);
+      }
+
+      return createEmptyForm();
+    });
     setEditId(null);
   }
 
@@ -381,8 +449,8 @@ export default function ItemPage() {
                 }
               }}
               className={`inline-flex items-center justify-center gap-2 self-start rounded-xl px-4 py-2.5 text-sm font-bold transition duration-300 shadow-sm sm:self-auto ${isFormOpen
-                  ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
-                  : "bg-teal-600 text-white hover:bg-teal-700 hover:shadow-teal-100"
+                ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
+                : "bg-teal-600 text-white hover:bg-teal-700 hover:shadow-teal-100"
                 }`}
             >
               {isFormOpen ? (
@@ -619,25 +687,67 @@ export default function ItemPage() {
 
                   <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_270px_205px]">
                     <SectionCard color="emerald" title="Product image">
-                      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2.5 py-1.5 transition hover:border-teal-300 hover:bg-teal-50/40">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleImageChange}
-                        />
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-slate-800 text-teal-500 dark:text-teal-400 shadow-sm">
-                          <UploadIcon className="h-3.5 w-3.5" />
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2 dark:border-slate-700 dark:bg-slate-900/50">
+                        <div className="flex items-start gap-2">
+                          <label className={`flex h-14 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-2 transition hover:border-teal-400 hover:bg-teal-50/70 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-teal-500 dark:hover:bg-slate-800/80 ${form.image_preview ? "w-1/2" : "w-full"}`}>
+                            <input
+                              id="item-image-input"
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleImageChange}
+                            />
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-600 shadow-sm dark:bg-teal-500/10 dark:text-teal-400">
+                              <UploadIcon className="h-3.5 w-3.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">
+                                Upload image
+                              </p>
+                              <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">
+                                {form.image_name || "PNG, JPG, SVG up to 10MB"}
+                              </p>
+                            </div>
+                          </label>
+
+                          {form.image_preview && (
+                            <div className="flex h-14 min-w-0 flex-1 items-center justify-start rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                              <div className="relative inline-flex">
+                                <img
+                                  src={
+                                    form.image_preview.startsWith("http") ||
+                                      form.image_preview.startsWith("blob:")
+                                      ? form.image_preview
+                                      : `${BASE_URL}${form.image_preview}`
+                                  }
+                                  alt="Selected item preview"
+                                  className="h-10 w-10 rounded-lg object-cover"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={removeSelectedImage}
+                                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-rose-50 hover:text-rose-600"
+                                  aria-label="Remove image"
+                                >
+                                  <svg
+                                    className="h-3 w-3"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth={2.2}
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M6 6l12 12M18 6L6 18"
+                                    />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-[12px] font-semibold text-teal-600 dark:text-teal-400">
-                            Upload image
-                          </p>
-                          <p className="mt-0.5 truncate text-[10px] text-slate-500">
-                            {form.image_name || "PNG, JPG, SVG up to 10MB"}
-                          </p>
-                        </div>
-                      </label>
+                      </div>
                     </SectionCard>
 
                     <SectionCard color="amber" title="Status">
@@ -740,7 +850,8 @@ export default function ItemPage() {
                       key={item.id}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="group transition-colors hover:bg-teal-50/30 dark:hover:bg-teal-900/10"
+                      onClick={() => handleView(item.id)}
+                      className="group transition-colors hover:bg-teal-50/30 dark:hover:bg-teal-900/10 cursor-pointer"
                     >
                       <td className="py-4 pr-4 pl-5 text-[11px] font-mono text-slate-400 dark:text-slate-500 sm:pl-6">
                         {index + 1}
@@ -778,9 +889,9 @@ export default function ItemPage() {
                       <td className="px-4 py-4">
                         <span
                           className={`text-[12px] font-semibold ${parseFloat(item.stock || item.opening_stock || 0) <=
-                              (item.reorder || item.reorder_level || 0)
-                              ? "text-rose-600 dark:text-rose-400"
-                              : "text-slate-700 dark:text-slate-300"
+                            (item.reorder || item.reorder_level || 0)
+                            ? "text-rose-600 dark:text-rose-400"
+                            : "text-slate-700 dark:text-slate-300"
                             }`}
                         >
                           {item.stock || item.opening_stock || 0}
@@ -808,18 +919,19 @@ export default function ItemPage() {
                       </td>
                       <td className="py-4 pl-4 pr-5 sm:pr-6">
                         <div className="flex justify-end gap-2">
+
                           {canUpdateItem && (
                             <ActionButton
                               label="Edit"
                               tone="teal"
-                              onClick={() => handleEdit(item)}
+                              onClick={(e) => { e.stopPropagation(); handleEdit(item); }}
                             />
                           )}
                           {canDeleteItem && (
                             <ActionButton
                               label="Delete"
                               tone="rose"
-                              onClick={() => handleDelete(item.id)}
+                              onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
                             />
                           )}
                         </div>
